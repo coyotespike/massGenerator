@@ -43,12 +43,15 @@ export default function PrintView() {
     setContent(generatedContent);
     setIsLoading(false);
 
-    // Auto-print after content loads
-    const timer = setTimeout(() => {
-      window.print();
-    }, 1000);
+    // Auto-print after content loads (unless disabled for PDF generation)
+    const autoPrint = searchParams.get('autoPrint') !== 'false';
+    if (autoPrint) {
+      const timer = setTimeout(() => {
+        window.print();
+      }, 1000);
 
-    return () => clearTimeout(timer);
+      return () => clearTimeout(timer);
+    }
   }, [searchParams]);
 
   if (isLoading) {

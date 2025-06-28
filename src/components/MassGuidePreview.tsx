@@ -32,170 +32,140 @@ export default function MassGuidePreview({
 
     setIsPDFGenerating(true);
     try {
-      // Import required libraries
+      // Import jsPDF
       const { jsPDF } = await import('jspdf');
-      const html2canvas = (await import('html2canvas')).default;
 
-      // Create a temporary container for PDF rendering
-      const pdfContainer = document.createElement('div');
-      pdfContainer.style.position = 'absolute';
-      pdfContainer.style.left = '-9999px';
-      pdfContainer.style.top = '-9999px';
-      pdfContainer.style.width = '792px'; // 11 inches at 72 DPI in pixels
-      pdfContainer.style.minHeight = '612px'; // 8.5 inches at 72 DPI in pixels  
-      pdfContainer.style.backgroundColor = 'white';
-      pdfContainer.style.fontFamily = 'Times New Roman, serif';
-      pdfContainer.style.fontSize = '10pt';
-      pdfContainer.style.lineHeight = '1.3';
-      pdfContainer.style.padding = '36px'; // 0.5in in pixels
-      pdfContainer.style.boxSizing = 'border-box';
-      
-      // Calculate available width for columns (total width minus padding)
-      const availableWidth = 792 - (36 * 2); // 720px
-      const columnWidth = (availableWidth - 36) / 2; // Account for gap
-      
-      pdfContainer.style.columnCount = '2';
-      pdfContainer.style.columnWidth = `${columnWidth}px`;
-      pdfContainer.style.columnGap = '36px'; // 0.5in gap
-      pdfContainer.style.columnRule = '1px solid #ccc';
-      pdfContainer.style.columnFill = 'auto';
-      
-      // Add the content
-      pdfContainer.innerHTML = generatedContent;
-      
-      // Apply PDF-specific styling
-      const style = document.createElement('style');
-      style.textContent = `
-        #pdf-temp {
-          width: 792px !important;
-          font-family: 'Times New Roman', serif !important;
-        }
-        #pdf-temp h1 { 
-          font-size: 18pt !important; 
-          color: #8B4513 !important; 
-          text-align: center !important; 
-          margin-bottom: 15px !important;
-          break-after: avoid !important;
-        }
-        #pdf-temp h2 { 
-          font-size: 12pt !important; 
-          color: #8B4513 !important; 
-          margin: 15px 0 8px 0 !important; 
-          border-bottom: 1px solid #8B4513 !important;
-          break-after: avoid !important;
-        }
-        #pdf-temp h3 { 
-          font-size: 11pt !important; 
-          color: #8B4513 !important; 
-          margin: 12px 0 6px 0 !important;
-          break-after: avoid !important;
-        }
-        #pdf-temp h4 { 
-          font-size: 10pt !important; 
-          color: #8B4513 !important; 
-          margin: 10px 0 4px 0 !important;
-          break-after: avoid !important;
-        }
-        #pdf-temp p { 
-          margin: 4px 0 !important;
-          break-inside: avoid !important;
-        }
-        #pdf-temp table { 
-          width: 100% !important; 
-          border-collapse: collapse !important; 
-          margin: 8px 0 !important;
-          break-inside: avoid !important;
-        }
-        #pdf-temp table td { 
-          font-size: 9pt !important; 
-          padding: 4px 8px !important; 
-          vertical-align: top !important;
-        }
-        #pdf-temp table td:first-child { 
-          border-right: 1px solid #ddd !important; 
-        }
-      `;
-      pdfContainer.id = 'pdf-temp';
-      
-      document.head.appendChild(style);
-      document.body.appendChild(pdfContainer);
-
-      // Wait for layout to settle and fonts to load
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Create canvas from the container with proper dimensions
-      const canvas = await html2canvas(pdfContainer, {
-        scale: 1, // Use 1:1 scale for precise dimensions
-        useCORS: true,
-        backgroundColor: 'white',
-        width: 792,
-        height: Math.max(612, pdfContainer.scrollHeight), // Capture full height
-        windowWidth: 792,
-        windowHeight: Math.max(612, pdfContainer.scrollHeight)
-      });
-
-      // Create PDF in landscape mode
+      // Create PDF in portrait mode for better readability
       const doc = new jsPDF({
-        orientation: 'landscape',
+        orientation: 'portrait',
         unit: 'pt',
         format: 'letter'
       });
 
-      const imgData = canvas.toDataURL('image/png');
-      const pdfWidth = doc.internal.pageSize.getWidth();
-      const pdfHeight = doc.internal.pageSize.getHeight();
+      const pageWidth = doc.internal.pageSize.getWidth(); // 612pt
+      const pageHeight = doc.internal.pageSize.getHeight(); // 792pt
+      const margin = 36; // 0.5 inch margins
+      const columnWidth = (pageWidth - (margin * 3)) / 2; // Two columns with gap
+      const leftColumnX = margin;
+      const rightColumnX = margin + columnWidth + margin;
       
-      // Calculate how the image should fit
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
+      let currentY = margin;
+      let currentColumn = 'left';
       
-      // Scale to fit PDF width while maintaining aspect ratio
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const scaledWidth = imgWidth * ratio;
-      const scaledHeight = imgHeight * ratio;
-      
-      // Handle multi-page content
-      if (scaledHeight > pdfHeight) {
-        // Content spans multiple pages
-        let remainingHeight = scaledHeight;
-        let currentY = 0;
-        let pageNum = 0;
+      // Helper function to add text and manage columns/pages
+      const addText = (text: string, fontSize: number, isBold = false, isCenter = false, color = '#000000') => {
+        doc.setFontSize(fontSize);
+        doc.setFont('times', isBold ? 'bold' : 'normal');
+        doc.setTextColor(color);
         
-        while (remainingHeight > 0) {
-          if (pageNum > 0) {
+        const textWidth = isCenter ? pageWidth - (margin * 2) : columnWidth;
+        const textX = isCenter ? margin : (currentColumn === 'left' ? leftColumnX : rightColumnX);
+        
+        const lines = doc.splitTextToSize(text, textWidth);
+        const lineHeight = fontSize * 1.2;
+        
+        // Check if we need a new page
+        if (currentY + (lines.length * lineHeight) > pageHeight - margin) {
+          if (currentColumn === 'left' && !isCenter) {
+            // Move to right column
+            currentColumn = 'right';
+            currentY = margin;
+          } else {
+            // New page
             doc.addPage();
+            currentY = margin;
+            currentColumn = 'left';
           }
-          
-          const pageContentHeight = Math.min(pdfHeight, remainingHeight);
-          const sourceY = (currentY / ratio);
-          const sourceHeight = (pageContentHeight / ratio);
-          
-          // Create a cropped canvas for this page
-          const pageCanvas = document.createElement('canvas');
-          pageCanvas.width = imgWidth;
-          pageCanvas.height = sourceHeight;
-          const pageCtx = pageCanvas.getContext('2d');
-          
-          if (pageCtx) {
-            pageCtx.drawImage(canvas, 0, sourceY, imgWidth, sourceHeight, 0, 0, imgWidth, sourceHeight);
-            const pageImgData = pageCanvas.toDataURL('image/png');
-            doc.addImage(pageImgData, 'PNG', 0, 0, scaledWidth, pageContentHeight);
-          }
-          
-          currentY += pageContentHeight;
-          remainingHeight -= pageContentHeight;
-          pageNum++;
         }
-      } else {
-        // Content fits on one page
-        doc.addImage(imgData, 'PNG', 0, 0, scaledWidth, scaledHeight);
+        
+        lines.forEach((line: string) => {
+          const finalX = isCenter ? textX + (textWidth - doc.getTextWidth(line)) / 2 : textX;
+          doc.text(line, finalX, currentY);
+          currentY += lineHeight;
+        });
+        
+        return currentY;
+      };
+      
+      // Helper function to add a section divider
+      const addDivider = () => {
+        const x = currentColumn === 'left' ? leftColumnX : rightColumnX;
+        doc.setDrawColor('#8B4513');
+        doc.setLineWidth(0.5);
+        doc.line(x, currentY, x + columnWidth, currentY);
+        currentY += 10;
+      };
+
+      // Parse the HTML content and extract text
+      const parser = new DOMParser();
+      const htmlDoc = parser.parseFromString(generatedContent, 'text/html');
+      
+      // Add title page if needed
+      if (bookletOptions.blankFirstPage) {
+        doc.addPage();
+        addText('Guide to the Catholic Mass', 24, true, true, '#8B4513');
+        currentY += 20;
+        addText('Customized for Your Parish', 14, false, true, '#666666');
+        doc.addPage();
+        currentY = margin;
+        currentColumn = 'left';
       }
       
+      // Process HTML elements
+      const processElement = (element: Element) => {
+        const tagName = element.tagName?.toLowerCase();
+        const textContent = element.textContent?.trim() || '';
+        
+        if (!textContent) return;
+        
+        switch (tagName) {
+          case 'h1':
+            addText(textContent, 18, true, false, '#8B4513');
+            currentY += 5;
+            break;
+          case 'h2':
+            addText(textContent, 12, true, false, '#8B4513');
+            addDivider();
+            break;
+          case 'h3':
+            addText(textContent, 11, true, false, '#8B4513');
+            currentY += 3;
+            break;
+          case 'h4':
+            addText(textContent, 10, true, false, '#8B4513');
+            currentY += 2;
+            break;
+          case 'p':
+            addText(textContent, 10, false, false, '#000000');
+            currentY += 4;
+            break;
+          case 'table':
+            // Handle tables specially
+            const rows = element.querySelectorAll('tr');
+            rows.forEach(row => {
+              const cells = row.querySelectorAll('td');
+              if (cells.length >= 2) {
+                const leftText = cells[0].textContent?.trim() || '';
+                const rightText = cells[1].textContent?.trim() || '';
+                addText(`${leftText} | ${rightText}`, 9, false, false, '#000000');
+              }
+            });
+            currentY += 8;
+            break;
+          default:
+            // For other elements, just add the text
+            if (textContent.length > 0) {
+              addText(textContent, 10, false, false, '#000000');
+              currentY += 2;
+            }
+        }
+      };
+      
+      // Process all elements in the HTML
+      const allElements = htmlDoc.querySelectorAll('h1, h2, h3, h4, p, table');
+      allElements.forEach(processElement);
+      
       doc.save('Catholic_Mass_Guide.pdf');
-
-      // Cleanup
-      document.body.removeChild(pdfContainer);
-      document.head.removeChild(style);
       
     } catch (error) {
       console.error('Error generating PDF:', error);
