@@ -2,7 +2,8 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { generateGuideContent } from '@/utils/guideGenerator';
+import { generateGuideContent, generateSplitContent, generateBookletContent, generateHalfPageSheets } from '@/utils/guideGenerator';
+import { ImpositionResult, BookletPage } from '@/utils/pageImposition';
 import { MassGuideOptions } from '@/types/massGuide';
 
 const defaultOptions: MassGuideOptions = {
@@ -21,6 +22,10 @@ const defaultOptions: MassGuideOptions = {
 export default function PrintView() {
   const searchParams = useSearchParams();
   const [content, setContent] = useState<string>('');
+  const [firstPageContent, setFirstPageContent] = useState<string>('');
+  const [remainingContent, setRemainingContent] = useState<string>('');
+  const [bookletResult, setBookletResult] = useState<ImpositionResult | null>(null);
+  const [halfPageResult, setHalfPageResult] = useState<{ printOrder: BookletPage[] } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -38,9 +43,26 @@ export default function PrintView() {
       dismissal: (searchParams.get('dismissal') as MassGuideOptions['dismissal']) || defaultOptions.dismissal
     };
 
-    // Generate the content
-    const generatedContent = generateGuideContent(options);
-    setContent(generatedContent);
+    const skipTitlePage = searchParams.get('skipTitlePage') === 'true';
+    const blankFirstPage = searchParams.get('blankFirstPage') === 'true';
+    const bookletMode = searchParams.get('bookletMode') === 'true';
+    const testHalfPages = searchParams.get('testHalfPages') === 'true';
+    
+    if (bookletMode) {
+      // Generate content with page imposition for booklet printing
+      const includeTitle = blankFirstPage && !skipTitlePage;
+      const impositionResult = generateBookletContent(options, includeTitle);
+      setBookletResult(impositionResult);
+    } else if (testHalfPages || skipTitlePage || blankFirstPage) {
+      // Generate half-page layout for testing or blank first page modes
+      const includeTitle = blankFirstPage && !skipTitlePage;
+      const halfPageSheets = generateHalfPageSheets(options, includeTitle, skipTitlePage);
+      setHalfPageResult(halfPageSheets);
+    } else {
+      // Generate normal content
+      const generatedContent = generateGuideContent(options);
+      setContent(generatedContent);
+    }
     setIsLoading(false);
 
     // Auto-print after content loads (unless disabled for PDF generation)
@@ -59,6 +81,9 @@ export default function PrintView() {
   }
 
   const blankFirstPage = searchParams.get('blankFirstPage') === 'true';
+  const skipTitlePage = searchParams.get('skipTitlePage') === 'true';
+  const bookletMode = searchParams.get('bookletMode') === 'true';
+  const testHalfPages = searchParams.get('testHalfPages') === 'true';
 
   return (
     <>
@@ -146,6 +171,82 @@ export default function PrintView() {
             column-fill: auto;
           }
           
+          .first-content-page {
+            display: flex;
+            height: 100vh;
+            page-break-after: always;
+          }
+          
+          .first-content-blank-half {
+            flex: 1;
+            background: white;
+            border-right: 1px dashed #ccc;
+          }
+          
+          .first-content-half {
+            flex: 1;
+            padding: 1in;
+            overflow: hidden;
+          }
+          
+          .booklet-sheet {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5in;
+            page-break-after: always;
+          }
+          
+          .booklet-sheet:last-child {
+            page-break-after: auto;
+          }
+          
+          .booklet-half {
+            padding: 0.5in;
+            position: relative;
+          }
+          
+          .booklet-half.left {
+            border-right: 1px dashed #ccc;
+          }
+          
+          .booklet-half.right {
+            border-left: 1px dashed #ccc;
+          }
+          
+          .booklet-half .page-number {
+            position: absolute;
+            bottom: 0.25in;
+            text-align: center;
+            width: 100%;
+            font-size: 8pt;
+            color: #666;
+          }
+          
+          .blank-half {
+            min-height: calc(100vh - 1in);
+            background: white;
+          }
+          
+          /* Override full-width elements in booklet mode */
+          @media print {
+            .booklet-half h2 {
+              border-bottom: 1px solid #8B4513 !important;
+              width: 100% !important;
+            }
+            
+            .booklet-half table {
+              width: 100% !important;
+              max-width: 100% !important;
+            }
+            
+            .booklet-half .booklet-content {
+              column-count: 1 !important;
+              column-gap: 0 !important;
+              column-rule: none !important;
+            }
+          }
+          
           .booklet-content h1 {
             font-size: 18pt !important;
             color: #8B4513 !important;
@@ -206,22 +307,69 @@ export default function PrintView() {
       `}</style>
 
       <div className="print-container">
-        {blankFirstPage && (
-          <div className="first-page">
-            <div className="blank-half"></div>
-            <div className="title-half">
-              <h1>Guide to the Catholic Mass</h1>
-              <div className="subtitle">
-                Customized for Your Parish
-              </div>
-            </div>
-          </div>
+        {(bookletMode && bookletResult) || (halfPageResult) ? (
+          // Half-page mode: render as sheets with left/right halves
+          <>
+            {(() => {
+              const sheets = [];
+              const pages = bookletMode ? bookletResult!.printOrder : halfPageResult!.printOrder;
+              
+              // Group pages into sheets (pairs)
+              for (let i = 0; i < pages.length; i += 2) {
+                const leftPage = pages[i];
+                const rightPage = pages[i + 1];
+                
+                sheets.push(
+                  <div key={i / 2} className="booklet-sheet">
+                    {/* Left half of sheet */}
+                    <div className="booklet-half left">
+                      {leftPage.isBlank ? (
+                        <div className="blank-half">
+                          <div className="page-number">—</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div dangerouslySetInnerHTML={{ __html: leftPage.content }} />
+                          <div className="page-number">
+                            {bookletMode ? `B${leftPage.pageNumber}` : `H${leftPage.pageNumber}`}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    
+                    {/* Right half of sheet */}
+                    <div className="booklet-half right">
+                      {rightPage?.isBlank ? (
+                        <div className="blank-half">
+                          <div className="page-number">—</div>
+                        </div>
+                      ) : rightPage ? (
+                        <>
+                          <div dangerouslySetInnerHTML={{ __html: rightPage.content }} />
+                          <div className="page-number">
+                            {bookletMode ? `B${rightPage.pageNumber}` : `H${rightPage.pageNumber}`}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="blank-half">
+                          <div className="page-number">—</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              
+              return sheets;
+            })()}
+          </>
+        ) : (
+          // Legacy single-column mode (no half-pages)
+          <div 
+            className="booklet-content"
+            dangerouslySetInnerHTML={{ __html: content }}
+          />
         )}
-        
-        <div 
-          className="booklet-content"
-          dangerouslySetInnerHTML={{ __html: content }}
-        />
       </div>
     </>
   );

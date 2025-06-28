@@ -187,6 +187,10 @@ export default function MassGuidePreview({
       params.set(key, value);
     });
     params.set('blankFirstPage', bookletOptions.blankFirstPage.toString());
+    params.set('skipTitlePage', bookletOptions.skipTitlePage.toString());
+    params.set('bookletMode', bookletOptions.bookletMode.toString());
+    // Add test parameter for half-page debugging
+    params.set('testHalfPages', 'true');
     
     // Open print route in new tab
     const printUrl = `/print?${params.toString()}`;
@@ -226,18 +230,58 @@ export default function MassGuidePreview({
           {/* Booklet Options */}
           <div className="bg-amber-50 p-4 rounded-lg mb-6 no-print">
             <h3 className="text-lg font-semibold text-amber-900 mb-3">Booklet Options</h3>
-            <div className="flex gap-6">
+            
+            {/* Booklet Mode Toggle */}
+            <div className="mb-4 p-3 bg-white rounded border">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={bookletOptions.bookletMode}
+                  onChange={(e) => onBookletOptionsChange({
+                    ...bookletOptions,
+                    bookletMode: e.target.checked
+                  })}
+                  className="text-amber-600 focus:ring-amber-500 mt-1"
+                />
+                <div>
+                  <span className="text-sm font-medium">Booklet Mode (Recommended)</span>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Automatically arranges pages for double-sided printing and folding. 
+                    Pages will be printed in the correct order so when you fold in half, 
+                    they form a proper booklet.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   checked={bookletOptions.blankFirstPage}
                   onChange={(e) => onBookletOptionsChange({
                     ...bookletOptions,
-                    blankFirstPage: e.target.checked
+                    blankFirstPage: e.target.checked,
+                    skipTitlePage: e.target.checked ? false : bookletOptions.skipTitlePage
                   })}
                   className="text-amber-600 focus:ring-amber-500"
+                  disabled={bookletOptions.bookletMode}
                 />
-                <span className="text-sm">Blank left half on first page (for folded booklet cover)</span>
+                <span className="text-sm">Include title page with blank left half</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={bookletOptions.skipTitlePage}
+                  onChange={(e) => onBookletOptionsChange({
+                    ...bookletOptions,
+                    skipTitlePage: e.target.checked,
+                    blankFirstPage: e.target.checked ? false : bookletOptions.blankFirstPage
+                  })}
+                  className="text-amber-600 focus:ring-amber-500"
+                  disabled={bookletOptions.bookletMode}
+                />
+                <span className="text-sm">Skip title page, start content with blank left half</span>
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -252,6 +296,13 @@ export default function MassGuidePreview({
                 <span className="text-sm">Show fold lines on print</span>
               </label>
             </div>
+            
+            {bookletOptions.bookletMode && (
+              <div className="mt-3 p-3 bg-blue-50 rounded text-sm text-blue-800">
+                <strong>Booklet Mode Active:</strong> Pages will be automatically arranged for proper folding. 
+                Blank pages may be added to ensure correct page ordering.
+              </div>
+            )}
           </div>
 
           <div className="flex justify-center gap-4 mb-6 no-print">

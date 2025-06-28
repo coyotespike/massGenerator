@@ -14,4 +14,6 @@ export interface MassGuideOptions {
 export interface BookletOptions {
   blankFirstPage: boolean;
   showFoldLines: boolean;
+  skipTitlePage: boolean;
+  bookletMode: boolean;
 }

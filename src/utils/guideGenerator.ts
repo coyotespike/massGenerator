@@ -1,7 +1,46 @@
 import { MassGuideOptions } from '@/types/massGuide';
+import { calculatePageImposition, BookletPage, ImpositionResult } from './pageImposition';
 
 export function generateGuideContent(options: MassGuideOptions): string {
-  let html = `
+  const { firstPageContent, remainingContent } = generateSplitContent(options);
+  return firstPageContent + remainingContent;
+}
+
+/**
+ * Generate content using half-page layout for non-booklet printing.
+ * This creates sheets with proper left/right half arrangement.
+ */
+export function generateHalfPageSheets(options: MassGuideOptions, includeTitle: boolean = true, skipTitle: boolean = false): { printOrder: BookletPage[] } {
+  const halfPages = generateHalfPages(options, includeTitle && !skipTitle);
+  
+  // Group half-pages into sheets (pairs)
+  const printOrder: BookletPage[] = [];
+  
+  for (let i = 0; i < halfPages.length; i += 2) {
+    const leftHalf = halfPages[i];
+    const rightHalf = halfPages[i + 1];
+    
+    // Add left half
+    printOrder.push(leftHalf);
+    
+    // Add right half (or blank if we don't have one)
+    if (rightHalf) {
+      printOrder.push(rightHalf);
+    } else {
+      printOrder.push({
+        pageNumber: leftHalf.pageNumber + 1,
+        content: '',
+        isBlank: true
+      });
+    }
+  }
+  
+  return { printOrder };
+}
+
+export function generateSplitContent(options: MassGuideOptions): { firstPageContent: string; remainingContent: string } {
+  // Build first page content - Introductory Rites through beginning of Liturgy of Word
+  let firstPageContent = `
     <h1 style="text-align: center; color: #8B4513; font-size: 24pt; margin-bottom: 10px;">Guide to the Catholic Mass</h1>
 
     <h2 style="color: #8B4513; font-size: 16pt; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #8B4513;">The Introductory Rites</h2>
@@ -15,18 +54,18 @@ export function generateGuideContent(options: MassGuideOptions): string {
 
   // Add selected greeting
   if (options.greeting === 'grace') {
-    html += `<p><strong>Priest:</strong> The grace of our Lord Jesus Christ, and the love of God, and the communion of the Holy Spirit be with you all.</p>`;
+    firstPageContent += `<p><strong>Priest:</strong> The grace of our Lord Jesus Christ, and the love of God, and the communion of the Holy Spirit be with you all.</p>`;
   } else if (options.greeting === 'peace') {
-    html += `<p><strong>Priest:</strong> Grace to you and peace from God our Father and the Lord Jesus Christ.</p>`;
+    firstPageContent += `<p><strong>Priest:</strong> Grace to you and peace from God our Father and the Lord Jesus Christ.</p>`;
   } else if (options.greeting === 'lord') {
-    html += `<p><strong>Priest:</strong> The Lord be with you.</p>`;
+    firstPageContent += `<p><strong>Priest:</strong> The Lord be with you.</p>`;
   }
-  html += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> And with your spirit.</p>`;
+  firstPageContent += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> And with your spirit.</p>`;
 
   // Add selected penitential act
-  html += `<h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Penitential Act</h3>`;
+  firstPageContent += `<h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Penitential Act</h3>`;
   if (options.penitential === 'confiteor') {
-    html += `
+    firstPageContent += `
       <p><strong>All:</strong> I confess to almighty God<br>
       and to you, my brothers and sisters,<br>
       that I have greatly sinned,<br>
@@ -40,13 +79,13 @@ export function generateGuideContent(options: MassGuideOptions): string {
       and you, my brothers and sisters,<br>
       to pray for me to the Lord our God.</p>`;
   } else if (options.penitential === 'mercy') {
-    html += `
+    firstPageContent += `
       <p><strong>Priest:</strong> Have mercy on us, O Lord.</p>
       <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> For we have sinned against you.</p>
       <p><strong>Priest:</strong> Show us, O Lord, your mercy.</p>
       <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> And grant us your salvation.</p>`;
   } else if (options.penitential === 'invocations') {
-    html += `
+    firstPageContent += `
       <p><strong>Priest:</strong> You were sent to heal the contrite of heart:</p>
       <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Lord, have mercy.</p>
       <p><strong>Priest:</strong> You came to call sinners:</p>
@@ -55,25 +94,25 @@ export function generateGuideContent(options: MassGuideOptions): string {
       <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Lord, have mercy.</p>`;
   }
 
-  html += `
+  firstPageContent += `
     <p><strong>Priest:</strong> May almighty God have mercy on us, forgive us our sins, and bring us to everlasting life.</p>
     <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Amen.</p>`;
 
   // Add Kyrie if selected
   if (options.kyrie !== 'skip') {
-    html += `<h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Kyrie</h3>`;
+    firstPageContent += `<h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Kyrie</h3>`;
     const kyrieText = options.kyrie === 'latin' ? 'Kyrie, eleison' : 'Lord, have mercy';
     const christeText = options.kyrie === 'latin' ? 'Christe, eleison' : 'Christ, have mercy';
 
-    html += `
+    firstPageContent += `
       <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> ${kyrieText}. ${kyrieText}.</p>
       <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> ${christeText}. ${christeText}.</p>
       <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> ${kyrieText}. ${kyrieText}.</p>`;
   }
 
-  // Add Gloria if selected
+  // Add Gloria if selected (this completes the first page)
   if (options.gloria === 'include') {
-    html += `
+    firstPageContent += `
       <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Gloria</h3>
       <p style="font-style: italic; color: #999; font-size: 10pt;">(When indicated, usually on Sundays and feast days)</p>
       <p><strong>All:</strong> Glory to God in the highest,<br>
@@ -90,10 +129,11 @@ export function generateGuideContent(options: MassGuideOptions): string {
       you alone are the Most High, Jesus Christ,<br>
       with the Holy Spirit, in the glory of God the Father. Amen.</p>`;
   } else {
-    html += `<p style="font-style: italic; color: #999; font-size: 10pt;"><em>Gloria is sung on Sundays and feast days (not during Advent or Lent)</em></p>`;
+    firstPageContent += `<p style="font-style: italic; color: #999; font-size: 10pt;"><em>Gloria is sung on Sundays and feast days (not during Advent or Lent)</em></p>`;
   }
 
-  html += `
+  // Remaining content starts with Collect and continues
+  let remainingContent = `
     <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Collect (Opening Prayer)</h3>
     <p><strong>Priest:</strong> Let us pray.</p>
     <p style="font-style: italic; color: #999; font-size: 10pt;">(Pause for silent prayer)</p>
@@ -135,7 +175,7 @@ export function generateGuideContent(options: MassGuideOptions): string {
 
   // Add selected creed
   if (options.creed === 'nicene' || options.creed === 'both') {
-    html += `
+    remainingContent += `
       <h4 style="color: #8B4513; font-size: 12pt; margin-top: 15px; margin-bottom: 6px;">Niceno-Constantinopolitan Creed</h4>
       <p style="font-style: italic; color: #999; font-size: 10pt;">(Usually used)</p>
       <p><strong>All:</strong> I believe in one God, the Father almighty,<br>
@@ -166,8 +206,8 @@ export function generateGuideContent(options: MassGuideOptions): string {
   }
 
   if (options.creed === 'apostles' || options.creed === 'both') {
-    if (options.creed === 'both') html += `<h4 style="color: #8B4513; font-size: 12pt; margin-top: 15px; margin-bottom: 6px;">Apostles' Creed</h4><p style="font-style: italic; color: #999; font-size: 10pt;">(Sometimes used during Lent and Easter)</p>`;
-    html += `
+    if (options.creed === 'both') remainingContent += `<h4 style="color: #8B4513; font-size: 12pt; margin-top: 15px; margin-bottom: 6px;">Apostles' Creed</h4><p style="font-style: italic; color: #999; font-size: 10pt;">(Sometimes used during Lent and Easter)</p>`;
+    remainingContent += `
       <p><strong>All:</strong> I believe in God, the Father almighty,<br>
       Creator of heaven and earth,<br>
       and in Jesus Christ, his only Son, our Lord,</p>
@@ -186,18 +226,18 @@ export function generateGuideContent(options: MassGuideOptions): string {
       the resurrection of the body, and life everlasting. Amen.</p>`;
   }
 
-  html += `
+  remainingContent += `
     <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Prayer of the Faithful</h3>
     <p style="font-style: italic; color: #999; font-size: 10pt;">(Intercessions are offered)</p>`;
 
   // Add selected faithful response
   if (options.faithful === 'mercy') {
-    html += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Lord, in your mercy. <em>Hear our prayer.</em></p>`;
+    remainingContent += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Lord, in your mercy. <em>Hear our prayer.</em></p>`;
   } else {
-    html += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Lord, hear our prayer.</p>`;
+    remainingContent += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Lord, hear our prayer.</p>`;
   }
 
-  html += `<p style="font-style: italic; color: #999; font-size: 10pt;">All sit after the concluding prayer</p>
+  remainingContent += `<p style="font-style: italic; color: #999; font-size: 10pt;">All sit after the concluding prayer</p>
 
     <h2 style="color: #8B4513; font-size: 16pt; margin-top: 25px; margin-bottom: 10px; border-bottom: 1px solid #8B4513;">The Liturgy of the Eucharist</h2>
 
@@ -228,7 +268,7 @@ export function generateGuideContent(options: MassGuideOptions): string {
 
   // Add selected Sanctus
   if (options.sanctus === 'english') {
-    html += `
+    remainingContent += `
       <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Holy, Holy, Holy</h3>
       <p><strong>All:</strong> Holy, Holy, Holy Lord God of hosts.<br>
       Heaven and earth are full of your glory.<br>
@@ -236,7 +276,7 @@ export function generateGuideContent(options: MassGuideOptions): string {
       Blessed is he who comes in the name of the Lord.<br>
       Hosanna in the highest.</p>`;
   } else if (options.sanctus === 'latin') {
-    html += `
+    remainingContent += `
       <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Sanctus</h3>
       <p><strong>All:</strong> Sanctus, Sanctus, Sanctus Dominus Deus Sabaoth.<br>
       Pleni sunt caeli et terra gloria tua.<br>
@@ -244,7 +284,7 @@ export function generateGuideContent(options: MassGuideOptions): string {
       Benedictus qui venit in nomine Domini.<br>
       Hosanna in excelsis.</p>`;
   } else { // both
-    html += `
+    remainingContent += `
       <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Holy, Holy, Holy / Sanctus</h3>
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
@@ -268,21 +308,21 @@ export function generateGuideContent(options: MassGuideOptions): string {
       </table>`;
   }
 
-  html += `
+  remainingContent += `
 
     <p style="font-style: italic; color: #999; font-size: 10pt;">(Eucharistic Prayer continues... After the words of Consecration:)</p>
     <p><strong>Priest:</strong> The mystery of faith.</p>`;
 
   // Add selected mystery of faith
   if (options.mystery === 'proclaim') {
-    html += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> We proclaim your Death, O Lord,<br>and profess your Resurrection until you come again.</p>`;
+    remainingContent += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> We proclaim your Death, O Lord,<br>and profess your Resurrection until you come again.</p>`;
   } else if (options.mystery === 'eat') {
-    html += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> When we eat this Bread and drink this Cup,<br>we proclaim your Death, O Lord, until you come again.</p>`;
+    remainingContent += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> When we eat this Bread and drink this Cup,<br>we proclaim your Death, O Lord, until you come again.</p>`;
   } else if (options.mystery === 'save') {
-    html += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Save us, Saviour of the world,<br>for by your Cross and Resurrection you have set us free.</p>`;
+    remainingContent += `<p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Save us, Saviour of the world,<br>for by your Cross and Resurrection you have set us free.</p>`;
   }
 
-  html += `
+  remainingContent += `
     <p style="font-style: italic; color: #999; font-size: 10pt;">(Prayer concludes with the Great Doxology:)</p>
     <p><strong>Priest:</strong> Through him, and with him, and in him,<br>
     O God, almighty Father, in the unity of the Holy Spirit,<br>
@@ -314,19 +354,19 @@ export function generateGuideContent(options: MassGuideOptions): string {
 
   // Add selected Agnus Dei
   if (options.agnus === 'english') {
-    html += `
+    remainingContent += `
       <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Lamb of God</h3>
       <p><strong>All:</strong> Lamb of God, you take away the sins of the world, have mercy on us.<br>
       Lamb of God, you take away the sins of the world, have mercy on us.<br>
       Lamb of God, you take away the sins of the world, grant us peace.</p>`;
   } else if (options.agnus === 'latin') {
-    html += `
+    remainingContent += `
       <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Agnus Dei</h3>
       <p><strong>All:</strong> Agnus Dei, qui tollis peccata mundi, miserere nobis.<br>
       Agnus Dei, qui tollis peccata mundi, miserere nobis.<br>
       Agnus Dei, qui tollis peccata mundi, dona nobis pacem.</p>`;
   } else { // both
-    html += `
+    remainingContent += `
       <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Lamb of God / Agnus Dei</h3>
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
@@ -346,7 +386,7 @@ export function generateGuideContent(options: MassGuideOptions): string {
       </table>`;
   }
 
-  html += `
+  remainingContent += `
 
     <h3 style="color: #8B4513; font-size: 14pt; margin-top: 20px; margin-bottom: 8px;">Invitation to Communion</h3>
     <p style="font-style: italic; color: #999; font-size: 10pt;">All kneel</p>
@@ -380,16 +420,16 @@ export function generateGuideContent(options: MassGuideOptions): string {
 
   // Add selected dismissal
   if (options.dismissal === 'ended') {
-    html += `<p><strong>Priest/Deacon:</strong> Go forth, the Mass is ended.</p>`;
+    remainingContent += `<p><strong>Priest/Deacon:</strong> Go forth, the Mass is ended.</p>`;
   } else if (options.dismissal === 'announce') {
-    html += `<p><strong>Priest/Deacon:</strong> Go and announce the Gospel of the Lord.</p>`;
+    remainingContent += `<p><strong>Priest/Deacon:</strong> Go and announce the Gospel of the Lord.</p>`;
   } else if (options.dismissal === 'glorify') {
-    html += `<p><strong>Priest/Deacon:</strong> Go in peace, glorifying the Lord by your life.</p>`;
+    remainingContent += `<p><strong>Priest/Deacon:</strong> Go in peace, glorifying the Lord by your life.</p>`;
   } else if (options.dismissal === 'peace') {
-    html += `<p><strong>Priest/Deacon:</strong> Go in peace.</p>`;
+    remainingContent += `<p><strong>Priest/Deacon:</strong> Go in peace.</p>`;
   }
 
-  html += `
+  remainingContent += `
     <p style="font-style: italic; color: #666; margin-left: 20px;"><strong>All:</strong> Thanks be to God.</p>
 
     <hr style="margin-top: 40px; border: 1px solid #8B4513;">
@@ -397,5 +437,105 @@ export function generateGuideContent(options: MassGuideOptions): string {
     <em>This guide is based on the English translation of The Roman Missal © 2010, International Commission on English in the Liturgy Corporation.</em>
     </p>`;
 
-  return html;
+  return { firstPageContent, remainingContent };
+}
+
+/**
+ * Split all content into logical half-pages for consistent layout.
+ * This creates the foundation for both normal and booklet printing.
+ */
+export function generateHalfPages(options: MassGuideOptions, includeTitle: boolean = true): BookletPage[] {
+  const { firstPageContent, remainingContent } = generateSplitContent(options);
+  const halfPages: BookletPage[] = [];
+  let halfPageNumber = 1;
+  
+  if (includeTitle) {
+    // Half-page 1: Blank (left half of title sheet)
+    halfPages.push({
+      pageNumber: halfPageNumber++,
+      content: '',
+      isBlank: true
+    });
+    
+    // Half-page 2: Title (right half of title sheet)
+    halfPages.push({
+      pageNumber: halfPageNumber++,
+      content: `
+        <div style="display: flex; height: 100vh; align-items: center; justify-content: center; text-align: center;">
+          <div>
+            <h1 style="color: #8B4513; font-size: 24pt; margin-bottom: 20px;">Guide to the Catholic Mass</h1>
+            <p style="color: #666; font-size: 14pt; font-style: italic;">Customized for Your Parish</p>
+          </div>
+        </div>
+      `,
+      isBlank: false
+    });
+  } else {
+    // Half-page 1: Blank (left half of first content sheet when no title)
+    halfPages.push({
+      pageNumber: halfPageNumber++,
+      content: '',
+      isBlank: true
+    });
+  }
+  
+  // Half-page for first content (Introductory Rites)
+  halfPages.push({
+    pageNumber: halfPageNumber++,
+    content: firstPageContent,
+    isBlank: false
+  });
+  
+  // Split remaining content into half-pages
+  // Split by major sections for more logical breaks
+  const contentSections = remainingContent.split('<h2');
+  let currentHalfPageContent = '';
+  
+  contentSections.forEach((section, index) => {
+    if (index === 0) {
+      // First section doesn't have <h2 at the start
+      currentHalfPageContent += section;
+    } else {
+      // Add back the <h2 tag that was removed by split
+      const sectionContent = '<h2' + section;
+      
+      // Check if we should start a new half-page
+      // Use content length as a heuristic for half-page breaks
+      if (currentHalfPageContent.length > 800) {
+        // Add current half-page
+        halfPages.push({
+          pageNumber: halfPageNumber++,
+          content: currentHalfPageContent,
+          isBlank: false
+        });
+        currentHalfPageContent = sectionContent;
+      } else {
+        currentHalfPageContent += sectionContent;
+      }
+    }
+  });
+  
+  // Add final half-page if there's remaining content
+  if (currentHalfPageContent.trim()) {
+    halfPages.push({
+      pageNumber: halfPageNumber,
+      content: currentHalfPageContent,
+      isBlank: false
+    });
+  }
+  
+  return halfPages;
+}
+
+/**
+ * Generate content arranged for booklet printing using page imposition.
+ * This function splits the Mass content into logical half-pages and then arranges
+ * them in the correct order for double-sided printing and folding.
+ */
+export function generateBookletContent(options: MassGuideOptions, includeTitle: boolean = true): ImpositionResult {
+  // First, split content into logical half-pages
+  const halfPages = generateHalfPages(options, includeTitle);
+  
+  // Apply page imposition to arrange half-pages for booklet printing
+  return calculatePageImposition(halfPages);
 }

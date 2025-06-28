@@ -21,7 +21,9 @@ const defaultOptions: MassGuideOptions = {
 
 const defaultBookletOptions: BookletOptions = {
   blankFirstPage: true,
-  showFoldLines: true
+  showFoldLines: true,
+  skipTitlePage: false,
+  bookletMode: false
 };
 
 export default function Home() {
