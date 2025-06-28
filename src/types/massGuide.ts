@@ -10,3 +10,8 @@ export interface MassGuideOptions {
   agnus: 'english' | 'latin' | 'both';
   dismissal: 'ended' | 'announce' | 'glorify' | 'peace';
 }
+
+export interface BookletOptions {
+  blankFirstPage: boolean;
+  showFoldLines: boolean;
+}
