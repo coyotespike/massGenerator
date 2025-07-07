@@ -72,3 +72,35 @@ describe('PDF Layout Validation', () => {
 - **URL parameter-based** data passing for print isolation
 
 This foundation provides an excellent base for future enhancements while maintaining clean, maintainable code.
+
+## Current Development State
+
+### Git Branch Status (as of 2025-01-07)
+
+**Main Branch**: 
+- Contains latest booklet functionality and advanced print features
+- Includes new BookletOptions interface with bookletMode, skipTitlePage options
+- Advanced page imposition and half-page layout system
+- Complex print layout with multiple rendering modes
+
+**Feature Branch** (`feature/agnus-dei-font-improvements`):
+- Contains Agnus Dei font size improvements for better print readability
+- Reduced paragraph font size: 11pt → 10pt  
+- Reduced table cell font size: 10pt → 9pt
+- Page margin adjustment: 0.2in → 0.25in
+- Ready for merge but has conflicts with main branch's new features
+
+### Merge Conflicts to Resolve
+
+The feature branch conflicts with main in these areas:
+1. **PrintView.tsx**: Main branch has extensive booklet functionality vs. simple font improvements
+2. **MassGuidePreview.tsx**: Main branch has new booklet options UI vs. simple parameter passing
+3. **guideGenerator.ts**: Main branch has split content generation vs. original unified approach
+
+### Recommended Next Steps
+
+1. **Manual merge resolution**: Combine the Agnus Dei font improvements with the new booklet features
+2. **Preserve both improvements**: Keep the advanced booklet functionality while adding the font size optimizations
+3. **Test thoroughly**: Ensure font improvements work across all print modes (normal, booklet, half-page)
+
+The Agnus Dei improvements are safely preserved and can be applied to the current advanced system when ready.
